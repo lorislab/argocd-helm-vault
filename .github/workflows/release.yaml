@@ -25,3 +25,17 @@ jobs:
           args: release --rm-dist
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  docker:
+    name: Release docker image
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: GitHub Container Registry
+        run: echo "${{ secrets.CR_PAT }}" | docker login https://ghcr.io -u USERNAME --password-stdin
+      - name: Publish docker
+        run: |
+          VERSION=$(echo "$GITHUB_REF" | sed -e 's,.*/\(.*\),\1,')
+          IMAGE_ID=ghcr.io/$GITHUB_REPOSITORY:$VERSION
+          docker build -t $IMAGE_ID --build-arg VERSION=$VERSION -f Dockerfile .
+          docker push $IMAGE_ID
