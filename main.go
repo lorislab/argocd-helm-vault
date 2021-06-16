@@ -27,11 +27,20 @@ func main() {
 	// before helm template update resources
 	if command == helmCommandTemplate {
 
-		// generated value files
-		values := parseValues()
+		// parse paraemters
+		parameters := parseParameters(helmFlagValues)
+
+		// update values
+		values := parameters[helmFlagValues]
 		if len(values) > 0 {
+
+			vault, err := NewVaultClient()
+			if err != nil {
+				fatal(err)
+			}
+			keys := map[string]map[string]interface{}{}
 			for _, file := range values {
-				vaultFile(file)
+				vaultFile(vault, keys, file)
 			}
 		}
 	}
@@ -40,17 +49,17 @@ func main() {
 	cmd(helmCmd, os.Args[1:]...)
 }
 
-func vaultFile(file string) {
+func vaultFile(vault *VaultClient, keys map[string]map[string]interface{}, file string) {
 	data, err := ioutil.ReadFile(file)
-	fatal(err)
-	output, find := vaultReplaceKeys(data)
+	fatal(err, "file", file)
+	output, find := vaultReplaceKeys(vault, keys, data)
 	if find {
 		err = ioutil.WriteFile(file, []byte(output), 0644)
-		fatal(err)
+		fatal(err, "file", file)
 	}
 }
 
-func vaultReplaceKeys(value []byte) ([]byte, bool) {
+func vaultReplaceKeys(vault *VaultClient, keys map[string]map[string]interface{}, value []byte) ([]byte, bool) {
 	find := false
 	result := regexPath.ReplaceAllFunc(value, func(match []byte) []byte {
 		data := strings.Trim(string(match), "<>")
@@ -60,10 +69,26 @@ func vaultReplaceKeys(value []byte) ([]byte, bool) {
 
 			// [input, path, key]
 			matches := regexSyntax.FindSubmatch(trim)
+			path := string(matches[1])
 
-			// call vault to get the value for the key
-			if len(matches) > 2 {
-				return cmdOutput("vault", "kv", "get", "-format=yaml", "-field="+string(matches[2]), string(matches[1]))
+			secrets := keys[path]
+			if secrets == nil {
+				if !vault.IsLogin() {
+					err := vault.Login()
+					if err != nil {
+						fatal(err)
+					}
+				}
+				secrets, err := vault.GetSecrets(path)
+				if err != nil {
+					fatal(err)
+				}
+				keys[path] = secrets
+			}
+
+			value, e := secrets[string(matches[2])]
+			if e && value != nil {
+				return value.([]byte)
 			}
 		}
 		return match
@@ -71,17 +96,9 @@ func vaultReplaceKeys(value []byte) ([]byte, bool) {
 	return result, find
 }
 
-func cmdOutput(name string, args ...string) []byte {
-	cmd := exec.Command(name, args...)
-	data, err := cmd.Output()
-	if err != nil {
-		fatal(err)
-	}
-	return data
-}
-
 func cmd(name string, args ...string) {
 	cmd := exec.Command(name, args...)
+	cmd.Env = os.Environ()
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	err := cmd.Run()
@@ -98,12 +115,19 @@ func parseCommand() string {
 	return ""
 }
 
-func parseValues() []string {
-	values := []string{}
+func parseParameters(params ...string) map[string][]string {
+	values := map[string][]string{}
+
+	for _, p := range params {
+		values[p] = []string{}
+	}
+
 	args := os.Args
 	for i, a := range args {
-		if a == helmFlagValues && (i+1) < len(args) {
-			values = append(values, args[i+1])
+		for _, p := range params {
+			if a == p && (i+1) < len(args) {
+				values[p] = append(values[p], args[i+1])
+			}
 		}
 	}
 	return values
@@ -117,9 +141,9 @@ func getEnv(name, defaultValue string) string {
 	return defaultValue
 }
 
-func fatal(err error) {
+func fatal(err error, data ...string) {
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v", err)
+		fmt.Fprintf(os.Stderr, "[argocd-helm-vault] error: %v parameters: %v", err, data)
 		os.Exit(1)
 	}
 }
