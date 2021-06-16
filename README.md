@@ -20,7 +20,7 @@ USER root
 
 RUN mv /usr/local/bin/helm /usr/local/bin/_helm3
 RUN mv /usr/local/bin/helm2 /usr/local/bin/_helm2
-COPY --from release /usr/local/bin/argocd-helm-vault /usr/local/bin/helm
+COPY --from=release /usr/local/bin/argocd-helm-vault /usr/local/bin/helm
 
 USER argocd
 ```
