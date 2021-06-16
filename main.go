@@ -12,7 +12,7 @@ import (
 )
 
 var (
-	helmCmd        = getEnv("ARGOCD_HELM_VAULT_CMD", "_helm3")
+	helmCmd        = getEnv("ARGOCD_HELM_VAULT_CMD", "_helm")
 	roleID         = getEnv("ARGOCD_HELM_VAULT_ROLE_ID", "")
 	secretID       = getEnv("ARGOCD_HELM_VAULT_SECRET_ID", "")
 	regexPath, _   = regexp.Compile(`(?mU)<vault:(.+?)\#(.+?)>`)
