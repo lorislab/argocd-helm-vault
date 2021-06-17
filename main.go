@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"os/exec"
 	"regexp"
@@ -12,16 +13,42 @@ import (
 	"github.com/hashicorp/vault/api"
 )
 
+const (
+	flagValues = "--values"
+)
+
 var (
-	helmCmd        = getEnv("ARGOCD_HELM_VAULT_CMD", "_helm")
-	roleID         = getEnv("ARGOCD_HELM_VAULT_ROLE_ID", "")
-	secretID       = getEnv("ARGOCD_HELM_VAULT_SECRET_ID", "")
+	helmCmd       = getEnv("ARGOCD_HELM_VAULT_CMD", "_helm")
+	roleID        = getEnv("ARGOCD_HELM_VAULT_ROLE_ID", "")
+	secretID      = getEnv("ARGOCD_HELM_VAULT_SECRET_ID", "")
+	replaceValues = getEnv("ARGOCD_HELM_VAULT_VALUES", "true")
+	replaceOutput = getEnv("ARGOCD_HELM_VAULT_OUTPUT", "false")
+
 	regexPath, _   = regexp.Compile(`(?mU)<vault:(.+)\#(.+)>`)
 	regexSyntax, _ = regexp.Compile(`(?mU)vault:(.+?)\#(.+?)`)
 	regexPipe, _   = regexp.Compile(`\|(.*)`)
 )
 
 func main() {
+
+	keys := map[string]map[string]interface{}{}
+
+	// create client and login with vault AppRole
+	vault, err := newVaultClient()
+	if err != nil {
+		fatal(err)
+	}
+
+	// replace values
+	if replaceValues == "true" {
+		flags := parseCmdFlags(flagValues)
+		values := flags[flagValues]
+		if len(values) > 0 {
+			for _, file := range values {
+				vaultReplaceFile(vault, keys, file)
+			}
+		}
+	}
 
 	// execute helm command
 	data, err := cmd(helmCmd, os.Args[1:]...)
@@ -30,24 +57,31 @@ func main() {
 		os.Exit(1)
 	}
 
-	// create client and login with vault AppRole
-	vault, err := newVaultClient()
-	if err != nil {
-		fatal(err)
-	}
-
-	// replace vault keys
-	output, find := vaultReplaceKeys(vault, data)
-	if find {
-		fmt.Fprintf(os.Stdout, "%s---\n", output)
+	// replace vault keys in the output
+	if replaceOutput == "true" {
+		output, find := vaultReplaceKeys(vault, keys, data)
+		if find {
+			fmt.Fprintf(os.Stdout, "%s---\n", output)
+		} else {
+			fmt.Fprintf(os.Stdout, "%s", data)
+		}
 	} else {
 		fmt.Fprintf(os.Stdout, "%s", data)
 	}
+
 }
 
-func vaultReplaceKeys(vault *api.Client, value []byte) ([]byte, bool) {
+func vaultReplaceFile(vault *api.Client, keys map[string]map[string]interface{}, file string) {
+	data, err := ioutil.ReadFile(file)
+	fatal(err, "file", file)
+	output, find := vaultReplaceKeys(vault, keys, data)
+	if find {
+		err = ioutil.WriteFile(file, []byte(output), 0644)
+		fatal(err, "file", file)
+	}
+}
 
-	keys := map[string]map[string]interface{}{}
+func vaultReplaceKeys(vault *api.Client, keys map[string]map[string]interface{}, value []byte) ([]byte, bool) {
 
 	find := false
 	result := regexPath.ReplaceAllFunc(value, func(match []byte) []byte {
@@ -61,7 +95,7 @@ func vaultReplaceKeys(vault *api.Client, value []byte) ([]byte, bool) {
 			data = strings.TrimSpace(strings.Split(data, "|")[0])
 		}
 
-		//
+		// check pattern
 		if regexSyntax.MatchString(data) {
 			find = true
 
@@ -117,9 +151,9 @@ func getEnv(name, defaultValue string) string {
 	return defaultValue
 }
 
-func fatal(err error) {
+func fatal(err error, data ...string) {
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "[argocd-helm-vault] error: %v", err)
+		fmt.Fprintf(os.Stderr, "[argocd-helm-vault] error: %v parameters: %v", err, data)
 		os.Exit(1)
 	}
 }
@@ -155,4 +189,22 @@ func getSecrets(client *api.Client, path string) (map[string]interface{}, error)
 		return nil, fmt.Errorf("path: %s is empty - did you forget to include <engine>/data/<path> in the Vault path for kv-v2?", path)
 	}
 	return nil, errors.New("could not get data from Vault, check the configuration")
+}
+
+func parseCmdFlags(flags ...string) map[string][]string {
+	values := map[string][]string{}
+
+	for _, p := range flags {
+		values[p] = []string{}
+	}
+
+	args := os.Args
+	for i, a := range args {
+		for _, p := range flags {
+			if a == p && (i+1) < len(args) {
+				values[p] = append(values[p], args[i+1])
+			}
+		}
+	}
+	return values
 }
