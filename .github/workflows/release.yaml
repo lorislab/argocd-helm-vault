@@ -31,8 +31,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
-      - name: GitHub Container Registry
-        run: echo "${{ secrets.CR_PAT }}" | docker login https://ghcr.io -u USERNAME --password-stdin
+      - name: Login
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
       - name: Publish docker
         run: |
           VERSION=$(echo "$GITHUB_REF" | sed -e 's,.*/\(.*\),\1,')

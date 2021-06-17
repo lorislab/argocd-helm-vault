@@ -1,6 +1,10 @@
 # argocd-helm-vault
 
-This helm wrapper replace the values with `vault` in the helm output.
+`` is helm wrapper which replace the values with `vault` in the helm output.
+
+[![License](https://img.shields.io/github/license/lorislab/argocd-helm-vault?style=for-the-badge&logo=apache)](https://www.apache.org/licenses/LICENSE-2.0)
+[![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/lorislab/argocd-helm-vault?sort=semver&logo=github&style=for-the-badge)](https://github.com/lorislab/argocd-helm-vault/releases/latest)
+
 
 # Installation
 

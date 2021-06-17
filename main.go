@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"os"
@@ -15,8 +16,9 @@ var (
 	helmCmd        = getEnv("ARGOCD_HELM_VAULT_CMD", "_helm")
 	roleID         = getEnv("ARGOCD_HELM_VAULT_ROLE_ID", "")
 	secretID       = getEnv("ARGOCD_HELM_VAULT_SECRET_ID", "")
-	regexPath, _   = regexp.Compile(`(?mU)<vault:(.+?)\#(.+?)>`)
+	regexPath, _   = regexp.Compile(`(?mU)<vault:(.+)\#(.+)>`)
 	regexSyntax, _ = regexp.Compile(`(?mU)vault:(.+?)\#(.+?)`)
+	regexPipe, _   = regexp.Compile(`\|(.*)`)
 )
 
 func main() {
@@ -28,7 +30,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// create client and login
+	// create client and login with vault AppRole
 	vault, err := newVaultClient()
 	if err != nil {
 		fatal(err)
@@ -50,12 +52,21 @@ func vaultReplaceKeys(vault *api.Client, value []byte) ([]byte, bool) {
 	find := false
 	result := regexPath.ReplaceAllFunc(value, func(match []byte) []byte {
 		data := strings.Trim(string(match), "<>")
-		trim := []byte(data)
-		if regexSyntax.Match(trim) {
+		pipe := ""
+
+		// check pipe
+		if regexPipe.MatchString(data) {
+			tmp := regexPipe.FindStringSubmatch(data)
+			pipe = strings.TrimSpace(string(tmp[1]))
+			data = strings.TrimSpace(strings.Split(data, "|")[0])
+		}
+
+		//
+		if regexSyntax.MatchString(data) {
 			find = true
 
 			// [input, path, key]
-			matches := regexSyntax.FindSubmatch(trim)
+			matches := regexSyntax.FindStringSubmatch(data)
 			path := strings.TrimSpace(string(matches[1]))
 
 			secrets := keys[path]
@@ -72,6 +83,15 @@ func vaultReplaceKeys(vault *api.Client, value []byte) ([]byte, bool) {
 			if e && value != nil {
 				switch v := value.(type) {
 				case string:
+					if len(pipe) > 0 {
+						switch pipe {
+						case "b64enc":
+							tmp := base64.StdEncoding.EncodeToString([]byte(v))
+							return []byte(tmp)
+						default:
+							fatal(fmt.Errorf("not supported function %v", pipe))
+						}
+					}
 					return []byte(v)
 				default:
 					return match
