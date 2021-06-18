@@ -79,6 +79,7 @@ USER argocd
 
 The wrapper could be configured with these variables:
 
+* ARGOCD_HELM_VAULT_ENABLED - enabled vault keys replace. Default `true`.
 * ARGOCD_HELM_VAULT_CMD - original helm command. Default `_helm`
 * ARGOCD_HELM_VAULT_ROLE_ID - vault AppRole `RoleID`. Default `""`.
 * ARGOCD_HELM_VAULT_SECRET_ID - vault AppRole `SecretID`. Default `""`.
