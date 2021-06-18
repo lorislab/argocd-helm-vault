@@ -62,9 +62,9 @@ To install the `argocd-helm-vault` in the ArgoCD docker image `argocd-repo-serve
 
 For example:
 ```docker
-FROM ghcr.io/lorislab/argocd-helm-vault:0.3.0 as release
+FROM ghcr.io/lorislab/argocd-helm-vault:0.4.0 as release
 
-FROM quay.io/argoproj/argocd:v2.0.2
+FROM quay.io/argoproj/argocd:v2.0.3
 
 USER root
 

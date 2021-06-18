@@ -23,6 +23,7 @@ var (
 	secretID      = getEnv("ARGOCD_HELM_VAULT_SECRET_ID", "")
 	replaceValues = getEnv("ARGOCD_HELM_VAULT_VALUES", "true")
 	replaceOutput = getEnv("ARGOCD_HELM_VAULT_OUTPUT", "false")
+	enabled       = getEnv("ARGOCD_HELM_VAULT_ENABLED", "true")
 
 	regexPath, _   = regexp.Compile(`(?mU)<vault:(.+)\#(.+)>`)
 	regexSyntax, _ = regexp.Compile(`(?mU)vault:(.+?)\#(.+?)`)
@@ -30,6 +31,17 @@ var (
 )
 
 func main() {
+
+	// check if enabled
+	if enabled != "true" {
+		data, err := cmd(helmCmd, os.Args[1:]...)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%s", data)
+			os.Exit(1)
+		}
+		fmt.Fprintf(os.Stdout, "%s", data)
+		os.Exit(0)
+	}
 
 	keys := map[string]map[string]interface{}{}
 
